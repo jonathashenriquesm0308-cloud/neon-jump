@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Neon Jump: Ultimate Audio</title>
+    <title>Neon Jump: Cross-Platform</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; touch-action: manipulation; }
         canvas { display: block; }
@@ -20,24 +20,30 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
 
         // Configurações de Áudio
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
         function playSound(freq, type, duration, vol) {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = type;
-            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + duration);
-            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + duration);
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(10, audioCtx.currentTime + duration);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
         }
 
         let gameStarted = false;
@@ -47,7 +53,7 @@
         const player = {
             x: canvas.width / 2 - 20, y: canvas.height - 100,
             w: 40, h: 40, dx: 0, dy: 0,
-            gravity: 0.5, jump: -4.8, speed: 6, friction: 0.9, color: '#00ffcc'
+            gravity: 0.5, jump: -4.8, speed: 7, friction: 0.9, color: '#00ffcc'
         };
 
         function drawMenu() {
@@ -56,9 +62,10 @@
             ctx.fillStyle = "#00ffcc";
             ctx.textAlign = "center";
             ctx.font = "bold 30px sans-serif";
-            ctx.fillText("NEON JUMP AUDIO", canvas.width/2, canvas.height/2 - 40);
+            ctx.fillText("NEON JUMP", canvas.width/2, canvas.height/2 - 40);
             ctx.font = "16px sans-serif";
-            ctx.fillText("TOQUE PARA JOGAR COM SOM", canvas.width/2, canvas.height/2 + 10);
+            ctx.fillText("MOBILE: TOQUE NAS LATERAIS", canvas.width/2, canvas.height/2 + 10);
+            ctx.fillText("PC: SETAS OU ESPAÇO", canvas.width/2, canvas.height/2 + 40);
         }
 
         function createPart(x, y, color) {
@@ -66,6 +73,48 @@
                 particles.push({x, y, sx:(Math.random()-0.5)*8, sy:(Math.random()-0.5)*8, op:1, color});
             }
         }
+
+        function handleAction(type, inputX) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            if (!gameStarted) {
+                gameStarted = true;
+                return;
+            }
+
+            // Movimento lateral
+            if (type === 'left') player.dx = -player.speed;
+            else if (type === 'right') player.dx = player.speed;
+            else if (type === 'touch') {
+                if (inputX < canvas.width / 2) player.dx = -player.speed;
+                else player.dx = player.speed;
+            }
+
+            player.dy += player.jump;
+            bullets.push({x: player.x + player.w/2 - 2, y: player.y});
+            createPart(player.x + 20, player.y + 40, player.color);
+            playSound(880, 'square', 0.1, 0.05);
+        }
+
+        // Eventos de Teclado (PC)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') handleAction('left');
+            if (e.key === 'ArrowRight') handleAction('right');
+            if (e.key === 'ArrowUp' || e.key === ' ') handleAction('jump');
+        });
+
+        // Eventos de Toque (Mobile)
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleAction('touch', e.touches[0].clientX);
+        }, {passive: false});
+
+        // Evento de Clique (PC Mouse)
+        window.addEventListener('mousedown', (e) => {
+            if (!('ontouchstart' in window)) { // Evita disparar duplo no mobile
+                handleAction('touch', e.clientX);
+            }
+        });
 
         function update() {
             ctx.fillStyle = "rgba(5, 5, 20, 0.4)";
@@ -86,10 +135,8 @@
             if (player.x + player.w > canvas.width) { player.x = canvas.width - player.w; player.dx = 0; }
             if (player.y > canvas.height - player.h) { player.y = canvas.height - player.h; player.dy = 0; }
 
-            ctx.shadowBlur = 15; ctx.shadowColor = player.color;
             ctx.fillStyle = player.color;
             ctx.fillRect(player.x, player.y, player.w, player.h);
-            ctx.shadowBlur = 0;
 
             if (Math.random() < 0.02) {
                 obstacles.push({x: Math.random()*(canvas.width-80), y: -50, w: 80, h: 20, s: 3.5 + score/300});
@@ -100,8 +147,11 @@
                 ctx.fillStyle = "#ff3300";
                 ctx.fillRect(o.x, o.y, o.w, o.h);
                 if (player.x < o.x + o.w && player.x + player.w > o.x && player.y < o.y + o.h && player.y + player.h > o.y) {
-                    playSound(100, 'sawtooth', 0.5, 0.2); // Som de morte
-                    resetGame();
+                    playSound(100, 'sawtooth', 0.5, 0.2);
+                    gameStarted = false;
+                    if (score > highscore) highscore = score;
+                    document.getElementById('best').innerText = "BEST: " + highscore;
+                    score = 0; obstacles = []; bullets = [];
                 }
             });
 
@@ -111,7 +161,7 @@
                 ctx.fillRect(b.x, b.y, 4, 15);
                 obstacles.forEach((o, oi) => {
                     if (b.x < o.x + o.w && b.x + 4 > o.x && b.y < o.y + o.h && b.y + 15 > o.y) {
-                        playSound(150, 'sine', 0.1, 0.1); // Som de impacto
+                        playSound(150, 'sine', 0.1, 0.1);
                         createPart(o.x+o.w/2, o.y+o.h/2, "#ff3300");
                         obstacles.splice(oi, 1);
                         bullets.splice(i, 1);
@@ -130,32 +180,6 @@
             document.getElementById('score').innerText = "SCORE: " + score;
             requestAnimationFrame(update);
         }
-
-        function resetGame() {
-            gameStarted = false;
-            if (score > highscore) highscore = score;
-            document.getElementById('best').innerText = "BEST: " + highscore;
-            score = 0; obstacles = []; bullets = [];
-            player.x = canvas.width/2 - 20; player.dx = 0; player.dy = 0;
-        }
-
-        window.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            
-            const touchX = e.touches[0].clientX;
-            if (!gameStarted) {
-                gameStarted = true;
-            } else {
-                if (touchX < canvas.width / 2) player.dx = -player.speed;
-                else player.dx = player.speed;
-                
-                player.dy += player.jump;
-                bullets.push({x: player.x + player.w/2 - 2, y: player.y});
-                createPart(player.x + 20, player.y + 40, player.color);
-                playSound(880, 'square', 0.1, 0.05); // Som de Laser/Pulo
-            }
-        });
 
         update();
     </script>
